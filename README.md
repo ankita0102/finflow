@@ -4,9 +4,7 @@ FinFlow is a production-oriented financial operations platform for learning and 
 backend architecture, distributed-systems patterns, cloud infrastructure, observability and
 full-stack product engineering.
 
-## Milestone 1
-
-Implemented now:
+## Implemented:
 
 - Spring Boot + Java 21
 - PostgreSQL
@@ -52,12 +50,10 @@ mvn test
 - `GET /api/v1/payments/{id}`
 - `GET /api/v1/accounts/{id}/transactions`
 
-## Important design choice
-
-Milestone 1 settles payments synchronously so the domain rules are clear before distributed
+Settles payments synchronously so the domain rules are clear before distributed
 complexity is introduced.
 
-Milestone 2 will introduce:
+## To be introduced:
 
 - Kafka
 - `payment.created`, `payment.authorized`, `payment.failed`, `payment.settled`
