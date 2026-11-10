@@ -1,0 +1,61 @@
+databaseChangeLog:
+  - changeSet:
+      id: 004-add-payment-workflow-columns
+      author: ankita
+      changes:
+        - addColumn:
+            tableName: accounts
+            columns:
+              - column:
+                  name: reserved_balance
+                  type: NUMERIC(19,4)
+                  defaultValueNumeric: 0
+                  constraints: {nullable: false}
+        - addColumn:
+            tableName: payments
+            columns:
+              - column: {name: failure_reason, type: VARCHAR(500)}
+
+  - changeSet:
+      id: 005-create-outbox-events
+      author: ankita
+      changes:
+        - createTable:
+            tableName: outbox_events
+            columns:
+              - column: {name: id, type: UUID, constraints: {primaryKey: true, nullable: false}}
+              - column: {name: aggregate_type, type: VARCHAR(80), constraints: {nullable: false}}
+              - column: {name: aggregate_id, type: UUID, constraints: {nullable: false}}
+              - column: {name: event_type, type: VARCHAR(120), constraints: {nullable: false}}
+              - column: {name: payload, type: TEXT, constraints: {nullable: false}}
+              - column: {name: status, type: VARCHAR(30), constraints: {nullable: false}}
+              - column: {name: attempt_count, type: INT, defaultValueNumeric: 0, constraints: {nullable: false}}
+              - column: {name: available_at, type: TIMESTAMP WITH TIME ZONE, constraints: {nullable: false}}
+              - column: {name: locked_at, type: TIMESTAMP WITH TIME ZONE}
+              - column: {name: claim_token, type: UUID}
+              - column: {name: created_at, type: TIMESTAMP WITH TIME ZONE, constraints: {nullable: false}}
+              - column: {name: published_at, type: TIMESTAMP WITH TIME ZONE}
+              - column: {name: last_error, type: VARCHAR(1000)}
+        - createIndex:
+            tableName: outbox_events
+            indexName: idx_outbox_dispatch
+            columns:
+              - column: {name: status}
+              - column: {name: available_at}
+              - column: {name: created_at}
+
+  - changeSet:
+      id: 006-create-processed-events
+      author: ankita
+      changes:
+        - createTable:
+            tableName: processed_events
+            columns:
+              - column: {name: id, type: UUID, constraints: {primaryKey: true, nullable: false}}
+              - column: {name: consumer_name, type: VARCHAR(120), constraints: {nullable: false}}
+              - column: {name: event_id, type: UUID, constraints: {nullable: false}}
+              - column: {name: processed_at, type: TIMESTAMP WITH TIME ZONE, constraints: {nullable: false}}
+        - addUniqueConstraint:
+            tableName: processed_events
+            columnNames: consumer_name,event_id
+            constraintName: uk_processed_event_consumer
