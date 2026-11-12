@@ -11,6 +11,33 @@ spring:
       ddl-auto: validate
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.yaml
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+    listener:
+      ack-mode: record
+
+finflow:
+  kafka:
+    payment-topic: payment.events
+    workflow-group: finflow-payment-workflow
+    audit-group: finflow-payment-audit
+  outbox:
+    poll-interval-ms: 500
+    batch-size: 50
+    stale-lock-seconds: 60
+    publish-timeout-seconds: 10
+    max-attempts: 10
 
 server:
   port: ${PORT:8080}

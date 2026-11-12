@@ -35,25 +35,10 @@ public class PaymentService {
     if(r.sourceAccountId().equals(r.destinationAccountId()))
       throw new ConflictException("Source and destination accounts must be different");
 
-    var source=accounts.findById(r.sourceAccountId()).orElseThrow(() -> new NotFoundException("Source account not found"));
-    var destination=accounts.findById(r.destinationAccountId()).orElseThrow(() -> new NotFoundException("Destination account not found"));
-
-    if(!source.getCurrency().equals(r.currency()) || !destination.getCurrency().equals(r.currency()))
-      throw new ConflictException("Payment currency must match both accounts");
-    if(source.getBalance().compareTo(r.amount())<0) throw new ConflictException("Insufficient funds");
-
     var now=OffsetDateTime.now(ZoneOffset.UTC);
-    var payment=new Payment(UUID.randomUUID(),source.getId(),destination.getId(),r.amount(),r.currency(),PaymentStatus.PENDING,key,now,now);
+    var payment=new Payment(UUID.randomUUID(),r.sourceAccountId(),r.destinationAccountId(),r.amount(),r.currency(),PaymentStatus.PENDING,key,now,now);
     payments.save(payment);
-
-    source.debit(r.amount()); destination.credit(r.amount());
-    accounts.save(source); accounts.save(destination);
-
-    ledger.save(new LedgerEntry(UUID.randomUUID(),source.getId(),payment.getId(),LedgerEntryType.DEBIT,r.amount(),source.getBalance(),now));
-    ledger.save(new LedgerEntry(UUID.randomUUID(),destination.getId(),payment.getId(),LedgerEntryType.CREDIT,r.amount(),destination.getBalance(),now));
-
-    payment.markSettled(now);
-    payments.save(payment);
+    outbox.append(PaymentEvent.created(payment,now));
     return PaymentResponse.from(payment);
   }
 

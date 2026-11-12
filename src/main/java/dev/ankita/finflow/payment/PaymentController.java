@@ -10,7 +10,7 @@ public class PaymentController {
   private final PaymentService payments;
   public PaymentController(PaymentService payments){this.payments=payments;}
 
-  @PostMapping @ResponseStatus(HttpStatus.CREATED)
+  @PostMapping @ResponseStatus(HttpStatus.ACCEPTED)
   public PaymentResponse create(@RequestHeader("Idempotency-Key") String key,@Valid @RequestBody CreatePaymentRequest request){
     return payments.create(key,request);
   }

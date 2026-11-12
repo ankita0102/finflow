@@ -1,42 +1,76 @@
 # FinFlow
 
-FinFlow is a production-oriented financial operations platform for learning and demonstrating
-backend architecture, distributed-systems patterns, cloud infrastructure, observability and
-full-stack product engineering.
+FinFlow is a production-oriented financial operations platform for demonstrating backend
+architecture, distributed-systems patterns, cloud infrastructure, observability, and full-stack
+product engineering.
 
-## Implemented:
+## Milestone 2: Kafka + Transactional Outbox
 
-- Spring Boot + Java 21
-- PostgreSQL
-- Liquibase schema migrations
-- Account creation and lookup
-- Payment creation and lookup
-- Mandatory `Idempotency-Key`
-- Duplicate-payment protection
-- Ledger entries for debits/credits
-- Account transaction history
-- Validation and API error handling
-- Swagger/OpenAPI
-- Actuator health/metrics
-- Docker Compose
-- Unit test for idempotency
+The payment API is now asynchronous. `POST /api/v1/payments` returns `202 Accepted` with a
+`PENDING` payment. The database transaction that creates the payment also creates a
+`payment.created` outbox record. A scheduled relay publishes the record to Kafka, and idempotent
+consumers advance the payment state machine.
 
-## Run
+```mermaid
+flowchart TD
+    API[Payment API] -->|one DB transaction| DB[(PostgreSQL)]
+    DB --> P[Payment: PENDING]
+    DB --> O[Outbox: payment.created]
+    O --> R[Outbox relay]
+    R --> K[(Kafka payment.events)]
+    K --> W[Workflow consumer]
+    W -->|reserve funds| A[AUTHORIZED]
+    A -->|outbox event| K
+    W -->|capture + ledger| S[SETTLED]
+    W -->|domain rejection| F[FAILED]
+    K -->|retry exhausted| D[(payment.events.DLQ)]
+```
 
-Requirements: Java 21, Maven 3.9+, Docker.
+Implemented:
+
+- Java 21 + Spring Boot
+- PostgreSQL + Liquibase
+- Kafka in single-node KRaft mode for local development
+- `payment.created`, `payment.authorized`, `payment.failed`, and `payment.settled`
+- transactional outbox with polling, `FOR UPDATE SKIP LOCKED`, and stale-claim recovery
+- producer acknowledgements and Kafka idempotent producer mode
+- exponential retry/backoff for outbox publication
+- three consumer retries with exponential backoff, followed by `payment.events.DLQ`
+- event consumers for workflow transitions, audit tracking, and DLQ monitoring
+- consumer inbox/idempotency table keyed by consumer and event ID
+- per-payment Kafka ordering through `paymentId` message keys
+- pessimistic account locking in deterministic UUID order
+- balance reservations so concurrent authorizations cannot overspend an account
+- debit/credit ledger entries created only during settlement
+- Micrometer counters for outbox publishing success/failure
+- REST APIs, OpenAPI/Swagger, validation, error handling, and Actuator
+- unit tests covering request idempotency, outbox creation, workflow transitions, and replay safety
+
+## Delivery guarantees
+
+The relay provides **at-least-once delivery**. A process can fail after Kafka accepts an event but
+before the outbox row is marked `PUBLISHED`, so publishing the same event again is intentional.
+Consumers store `(consumer_name, event_id)` in `processed_events` in the same database transaction
+as their business changes. A replay therefore cannot reserve funds or write ledger entries twice.
+
+The outbox relay retries failed sends with exponential backoff and marks an event `FAILED` after
+ten attempts. Consumer failures are retried after 1, 2, and 4 seconds; an exhausted record is sent
+to `payment.events.DLQ` with the original key, value, and error headers.
+
+## Run locally
+
+Requirements: Java 21, Maven 3.9+, and Docker with Compose.
 
 ```bash
 docker compose up -d
 mvn spring-boot:run
 ```
 
-Swagger:
-`http://localhost:8080/swagger-ui.html`
+- Swagger: `http://localhost:8080/swagger-ui.html`
+- Health: `http://localhost:8080/actuator/health`
+- Metrics: `http://localhost:8080/actuator/metrics`
 
-Health:
-`http://localhost:8080/actuator/health`
-
-Tests:
+Run tests:
 
 ```bash
 mvn test
@@ -46,30 +80,31 @@ mvn test
 
 - `POST /api/v1/accounts`
 - `GET /api/v1/accounts/{id}`
-- `POST /api/v1/payments`
+- `POST /api/v1/payments` with a mandatory `Idempotency-Key`
 - `GET /api/v1/payments/{id}`
 - `GET /api/v1/accounts/{id}/transactions`
 
-Settles payments synchronously so the domain rules are clear before distributed
-complexity is introduced.
+After creating a payment, poll `GET /api/v1/payments/{id}`. A valid payment normally progresses
+through `PENDING -> AUTHORIZED -> SETTLED`. Missing accounts, currency mismatch, or insufficient
+available funds produce `PENDING -> FAILED`, with `failureReason` in the response.
 
-## To be introduced:
+## Important operational tables
 
-- Kafka
-- `payment.created`, `payment.authorized`, `payment.failed`, `payment.settled`
-- Transactional outbox
-- Retry/backoff
-- Dead-letter queue
-- Event consumers
+- `outbox_events`: event payload, relay status, attempts, retry time, lock, and last error
+- `processed_events`: durable consumer deduplication/inbox records
+- `payments`: payment state and terminal failure reason
+- `accounts`: current balance plus funds reserved by authorized payments
+- `ledger_entries`: immutable debit and credit records written at settlement
 
-Later milestones:
+For the detailed design and failure behavior, see [`docs/milestone-2.md`](docs/milestone-2.md).
 
-- Next.js + TypeScript dashboard
+## Next milestones
+
+- Next.js + TypeScript operations dashboard
 - FastAPI analytics/fraud service
-- Redis
+- Redis caching and rate limiting
 - OpenTelemetry + Prometheus + Grafana
-- Load testing
+- load testing
 - GitHub Actions
-- AWS ECS/RDS/S3/IAM
-- Terraform
+- AWS ECS/RDS/S3/IAM + Terraform
 - optional Kubernetes + Helm
