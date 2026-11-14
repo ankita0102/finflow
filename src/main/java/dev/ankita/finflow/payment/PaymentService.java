@@ -1,7 +1,7 @@
 package dev.ankita.finflow.payment;
-import dev.ankita.finflow.account.*;
 import dev.ankita.finflow.common.*;
-import dev.ankita.finflow.ledger.*;
+import dev.ankita.finflow.event.PaymentEvent;
+import dev.ankita.finflow.outbox.OutboxService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.*;
@@ -10,11 +10,10 @@ import java.util.*;
 @Service
 public class PaymentService {
   private final PaymentRepository payments;
-  private final AccountRepository accounts;
-  private final LedgerEntryRepository ledger;
+  private final OutboxService outbox;
 
-  public PaymentService(PaymentRepository payments,AccountRepository accounts,LedgerEntryRepository ledger){
-    this.payments=payments;this.accounts=accounts;this.ledger=ledger;
+  public PaymentService(PaymentRepository payments, OutboxService outbox){
+    this.payments=payments;this.outbox=outbox;
   }
 
   @Transactional
